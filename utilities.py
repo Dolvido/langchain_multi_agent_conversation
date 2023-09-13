@@ -32,6 +32,11 @@ topic_keywords_dict = {
 }
 
 def calculate_relevance_score(response, user_query):
+    if(response == None):
+        return 0.0
+    if(user_query == None):
+        return 0.0
+    
     # Preprocessing: get the vector representation of the query and response
     query_vector = nlp(user_query).vector
     response_vector = nlp(response).vector

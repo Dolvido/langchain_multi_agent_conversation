@@ -1,4 +1,30 @@
-# my imports 
+
+
+last_response = None
+
+def generate_next_response(agents, initial_query):
+    responses = []
+    relevance_scores = []
+    for agent in agents:
+        response = agent.respond(initial_query)
+        responses.append(response)
+        relevance_scores.append(calculate_relevance_score(initial_query, response))
+
+    # Calculate the weights for each response.
+    weights = relevance_scores / sum(relevance_scores)
+
+    # Generate the next response by averaging the weighted responses of the agents.
+    next_response = ' '.join([responses[i] for i in np.argmax(weights)])
+
+    # If the next response is the same as the previous response, return a default response.
+    if next_response == last_response:
+        next_response = "I'm not sure what else to say. Can you please ask me something else?"
+    last_response = next_response
+
+    return next_response
+
+
+ 
 from utilities import calculate_relevance_score, self_evaluating_agent
 
 from langchain.llms import OpenAI
@@ -15,6 +41,7 @@ llm = OpenAI()
 
 get_all_tool_names()
 tools = load_tools(["wikipedia", "llm-math"], llm=llm)
+math = load_tools(["llm-math"], llm=OpenAI(model_name="text-davinci-003"))
 
 class ConversationAgent:
     def __init__(self, name, tools, llm, strategy='react_description', parameters=None):
@@ -40,6 +67,9 @@ class ConversationAgent:
             tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True
         )
         # (Consider initializing other agent types as needed)
+        self.backup_agent = initialize_agent(
+            tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True
+        )
 
         # Initialize conversation chain with memory
         self.conversation = ConversationChain(llm=llm, verbose=True)
@@ -69,49 +99,72 @@ class ConversationAgent:
 
     def chain_based_response(self, query):
         # Here we are using one of the chains to process the query
-        response = self.chain1.run(query)
+        response = self.chain.run(query)
         return response
 
     def gpt_based_response(self, query):
-        # ... (existing code for GPT-based strategy)
+        response = self.conversation.predict(input=query)
         return response
+    
+class ConversationEvaluatingAgent(ConversationAgent):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
+        # Initialize the self-evaluating agent.
+        self.self_evaluating_agent = self_evaluating_agent.SelfEvaluatingAgent()
+
+    def respond(self, query):
+        # Generate a response using the self-evaluating agent.
+        response = self.self_evaluating_agent.generate_response(query)
+
+        # Evaluate the response using the self-evaluating agent.
+        evaluation = self.self_evaluating_agent.evaluate_response(response)
+
+        # If the response is not evaluated to be good, generate a new response using one of the other agents in the list.
+        if evaluation is not None and evaluation < 0.5:
+            response = super().respond(query)
+
+        return response
 
 #agents = [ConversationAgent(name=f"Agent_{i}", tools=tools, llm=llm) for i in range(3)]
 
 agent1 = ConversationAgent(name="Agent_1", tools=tools, llm=llm, strategy='react_description')
-agent2 = ConversationAgent(name="Agent_2", tools=tools, llm=llm, strategy='gpt_based')
+agent2 = ConversationAgent(name="Agent_2", tools=tools, llm=llm, strategy='react_description')
+agent3 = ConversationAgent(name="GPT_Agent", tools=tools, llm=llm, strategy='react_description')
 
-agents = [agent1, agent2]
+agents = [agent1, agent2, agent3]
 
 # Multi-turn conversation
 conversation_history = []
-initial_query = input("Initial query: ")  # Getting the initial query
+#initial_query = input("Initial query: ")  # Getting the initial query
+initial_query = ""
 
 for i in range(5):  # 5 turns of conversation
-    for agent in agents:
-        response = agent.respond(initial_query)  # Using the last input as the new input
-        print(f"{agent.name} responds: {response}")
-        conversation_history.append((agent.name, initial_query, response))
-        initial_query = response  # Updating the initial_query with the new response
-    
-    # Summarizing the conversation every few turns (here, after each round of conversation)
-    if (i+1) % 2 == 0:
-        # Select the most relevant responses for the summary
-        relevant_responses = [
-            resp for _, _, resp in conversation_history[-(len(agents)*2):]
-            if calculate_relevance_score(initial_query, resp) > 0.9
-        ]
-        summary = " ".join(relevant_responses)
-        print(f"Summarizing the last 2 rounds: {summary}")
+    next_response = generate_next_response(agents, initial_query)
+        
+    print(f"Next response: {next_response}")
+    conversation_history.append(("System", initial_query, next_response))
+    initial_query = next_response  # Updating the initial_query with the new response
 
-    
-    # Calculate the relevance score of the current turn
-        relevance_score = calculate_relevance_score(initial_query, response)
-        print(f"Relevance score: {relevance_score}")
+    try:
+        # Summarizing the conversation every few turns (here, after each round of conversation)
+        if (i+1) % 2 == 0:
+            # Select the most relevant responses for the summary
+            relevant_responses = [
+                resp for _, _, resp in conversation_history[-2:]
+                if calculate_relevance_score(initial_query, resp) > 0.9
+            ]
+            summary = " ".join(relevant_responses)
+            print(f"Summarizing the last 2 rounds: {summary}")
+    except Exception as e:
+        print(f"Error while summarizing: {e}")
+        continue
 
-    
 
 # Display the full conversation history at the end
 for i, (agent_name, input_query, resp) in enumerate(conversation_history):
     print(f"Turn {i+1} - {agent_name}: {resp} (in response to: {input_query})")
+
+# Save the conversation history to a CSV file
+df = pd.DataFrame(conversation_history, columns=["Agent", "Input", "Response"])
+df.to_csv("conversation_history.csv", index=False)
