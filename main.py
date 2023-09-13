@@ -19,33 +19,70 @@ tools = load_tools(["wikipedia", "llm-math"], llm=llm)
 class ConversationAgent:
     def __init__(self, name, tools, llm, strategy='react_description', parameters=None):
         self.name = name
-        self.strategy = strategy  # New attribute to hold the strategy
-        self.parameters = parameters if parameters else {}  # New attribute to hold various parameters
-        self.agent = initialize_agent(
+        self.strategy = strategy
+        self.parameters = parameters if parameters else {}
+
+        # Initialize various components
+        self.llm_davinci = OpenAI(model_name="text-davinci-003")  # Different LLM
+        self.llm_standard = OpenAI()  # Standard LLM for other strategies
+
+        # Initialize prompt templates
+        self.prompt_template = PromptTemplate(
+            input_variables=["topic"], 
+            template="What is a good thing to talk about that reminds you of {topic}?"
+        )
+
+        # Initialize chains
+        self.chain = LLMChain(llm=self.llm_standard, prompt=self.prompt_template)
+
+        # Initialize agents with different agent types
+        self.agent_type1 = initialize_agent(
             tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True
         )
+        # (Consider initializing other agent types as needed)
+
+        # Initialize conversation chain with memory
+        self.conversation = ConversationChain(llm=llm, verbose=True)
+
+        # Initialize chat model
+        self.chat_model = ChatOpenAI()
+
         
     def respond(self, query):
-        # We will modify this method to generate responses based on the strategy attribute
         if self.strategy == 'react_description':
-            response = self.agent.run(query)
+            response = self.agent_type1.run(query)
         elif self.strategy == 'template_based':
             response = self.template_based_response(query)
+        elif self.strategy == 'chain_based':
+            response = self.chain_based_response(query)
+        elif self.strategy == 'gpt_based':
+            response = self.gpt_based_response(query)
         # ... (other strategies can be added here)
         else:
             response = "Unknown strategy"
 
-        # evaluate and potentially refine response
-        refined_response = self_evaluating_agent(response, query)
-            
-        return refined_response
-
     def template_based_response(self, query):
-        # Placeholder for template-based response generation
-        return "Template-based response"
+        # Here we are using one of the prompt templates to format the query
+        formatted_query = self.prompt_template1.format(product=query)
+        response = self.llm_davinci(formatted_query)
+        return response
+
+    def chain_based_response(self, query):
+        # Here we are using one of the chains to process the query
+        response = self.chain1.run(query)
+        return response
+
+    def gpt_based_response(self, query):
+        # ... (existing code for GPT-based strategy)
+        return response
 
 
-agents = [ConversationAgent(name=f"Agent_{i}", tools=tools, llm=llm) for i in range(3)]
+#agents = [ConversationAgent(name=f"Agent_{i}", tools=tools, llm=llm) for i in range(3)]
+
+agent1 = ConversationAgent(name="Agent_1", tools=tools, llm=llm, strategy='react_description')
+agent2 = ConversationAgent(name="Agent_2", tools=tools, llm=llm, strategy='gpt_based')
+
+agents = [agent1, agent2]
 
 # Multi-turn conversation
 conversation_history = []
