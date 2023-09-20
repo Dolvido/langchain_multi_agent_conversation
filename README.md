@@ -37,5 +37,3 @@ To test the system, run the multi-turn-conversation.py script with various queri
 #Contributing
 If you would like to contribute to this project, please fork the repository and create a pull request with your changes.
 
-#License
-This project is licensed under the MIT License.
