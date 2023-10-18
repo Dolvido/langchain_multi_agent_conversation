@@ -87,7 +87,6 @@ class ConversationAgent:
             response = self.chain_based_response(query)
         elif self.strategy == 'gpt_based':
             response = self.gpt_based_response(query)
-        # ... (other strategies can be added here)
         else:
             response = "Unknown strategy"
 
